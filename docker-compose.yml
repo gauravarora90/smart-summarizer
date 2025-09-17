@@ -5,7 +5,8 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - MODE=mock
+      - MODE=${MODE}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
 
   go-api:
     build: ./go-api

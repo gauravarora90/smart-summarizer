@@ -1,8 +1,18 @@
-# simple FastAPI mock summarizer - Day-1
-from fastapi import FastAPI
+import os
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
+import openai
 
 app = FastAPI()
+
+MODE = os.getenv("MODE", "mock")
+OPENAI_KEY = os.getenv("OPENAI_API_KEY", "")
+
+if MODE == "real" and not OPENAI_KEY:
+    raise RuntimeError("MODE=real requires OPENAI_API_KEY")
+
+if OPENAI_KEY:
+    openai.api_key = OPENAI_KEY
 
 class SummReq(BaseModel):
     text: str
@@ -11,18 +21,36 @@ class SummReq(BaseModel):
 @app.post("/api/summarize")
 async def summarize(payload: SummReq):
     text = payload.text or ""
-    # very small mock: return prefixes
-    short = (text[:120] + "...") if len(text) > 120 else text
-    medium = (text[:400] + "...") if len(text) > 400 else text
-    long = (text[:1000] + "...") if len(text) > 1000 else text
-    return {
-        "short": short,
-        "medium": medium,
-        "long": long,
-        "highlights": [short],
-        "confidence": 0.6
-    }
+    if MODE == "mock":
+        return {
+            "short": text[:120],
+            "medium": text[:400],
+            "long": text[:800],
+            "highlights": [text[:120]],
+            "confidence": 0.6
+        }
+
+    try:
+        resp = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "You are a helpful summarization assistant."},
+                {"role": "user", "content": f"Summarize this text:\n\n{text}"}
+            ],
+            max_tokens=200,
+            temperature=0.2,
+        )
+        ans = resp.choices[0].message["content"].strip()
+        return {
+            "short": ans,
+            "medium": ans,
+            "long": ans,
+            "highlights": [ans],
+            "confidence": 0.9
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/health")
 async def health():
-    return {"status":"ok"}
+    return {"status": "ok", "mode": MODE}
